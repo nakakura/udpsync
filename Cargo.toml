@@ -1,0 +1,10 @@
+[package]
+name = "udpsync"
+version = "0.1.0"
+authors = ["Toshiya Nakakura <nakakura@me.com>"]
+
+[dependencies]
+futures = "0.1.17"
+tokio-core = "0.1.10"
+either = "1.4"
+chrono = "*"

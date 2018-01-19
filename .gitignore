@@ -1,0 +1,6 @@
+.idea
+.env
+/target/
+**/*.rs.bk
+cmake-build-debug
+Cargo.lock
