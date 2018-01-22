@@ -20,7 +20,7 @@ struct HaptAndTimestamp(pub (Vec<u8>, DateTime<Utc>)); //data from haptic receiv
 #[derive(PartialEq, PartialOrd, Clone, Debug)]
 struct PlayTimingGap(pub (DateTime<Utc>, DateTime<Utc>)); //data from gstreamer
 #[derive(PartialEq, PartialOrd, Clone, Debug)]
-struct PlayDataAndTime(pub (Vec<Vec<u8>>, DateTime<Utc>)); //data from haptic receiver
+struct PlayDataAndTime(pub (Vec<Vec<u8>>, DateTime<Utc>)); //data for send
 
 impl PlayDataAndTime {
     pub fn len(&self) -> usize {
@@ -28,6 +28,7 @@ impl PlayDataAndTime {
         vec.len()
     }
 }
+
 fn extract_playabledata(mut data: Vec<HaptAndTimestamp>, &PlayTimingGap(time): &PlayTimingGap) -> (Vec<HaptAndTimestamp>, PlayDataAndTime) {
     //古すぎるデータは再生せず捨てる
     let _too_old_data = data.drain_filter(|&mut HaptAndTimestamp(ref x)| {
