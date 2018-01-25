@@ -1,18 +1,26 @@
 #![feature(drain_filter)]
-
+extern crate env_logger;
 extern crate futures;
 #[macro_use]
 extern crate tokio_core;
 extern crate chrono;
 extern crate tokio_io;
 
+pub mod udp;
+
 use chrono::prelude::*;
 use chrono::Duration;
 use futures::*;
 use futures::sync::mpsc;
+use tokio_core::reactor::Core;
+use tokio_core::net::UdpSocket;
+
+use std::{env, io};
+use std::net::SocketAddr;
+use std::thread;
 
 fn main() {
-    println!("Hello, world!");
+    udp::run();
 }
 
 #[derive(PartialEq, PartialOrd, Clone, Debug)]
