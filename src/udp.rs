@@ -1,11 +1,13 @@
 use std::{env, io};
 use std::net::SocketAddr;
+use std::thread;
 
 use future;
 use futures::{Future, Poll, Stream};
 use tokio_core::net::UdpSocket;
 use tokio_core::reactor::{ Core, Handle };
 use tokio_core::net::UdpCodec;
+use futures::sync::mpsc;
 
 pub struct LineCodec;
 
@@ -23,19 +25,45 @@ impl UdpCodec for LineCodec {
     }
 }
 
-pub fn run() {
-    let mut core = Core::new().unwrap();
-    let handle = core.handle();
+pub fn run(port: u16) {
+    let _ = thread::spawn(move || {
+        let mut core = Core::new().unwrap();
+        let handle = core.handle();
 
-    let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+        let addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
 
-    let a = UdpSocket::bind(&addr, &handle).unwrap();
-    println!("{:?}", a.local_addr().unwrap());
+        let a = UdpSocket::bind(&addr, &handle).unwrap();
+        println!("{:?}", a.local_addr().unwrap());
 
-    let (a_sink, a_stream) = a.framed(LineCodec).split();
-    let a = a_stream.map_err(|_| ()).fold(0u8, |sum: u8, (addr, x): (SocketAddr, Vec<u8>)| {
-        println!("{:?}, {:?}", addr, x);
-        Ok(sum)
+        let (_, a_stream) = a.framed(LineCodec).split();
+        let a = a_stream.map_err(|_| ()).fold(0u8, |sum: u8, (addr, x): (SocketAddr, Vec<u8>)| {
+            println!("recv {:?}, {:?}", addr, x);
+            Ok(sum)
+        });
+        drop(core.run(a));
     });
-    drop(core.run(a));
+}
+
+use futures::Sink;
+
+pub fn sender(port: u16, rx: mpsc::Receiver<(SocketAddr, Vec<u8>)>) {
+    let remote_addr: SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
+    let _ = thread::spawn(move || {
+        let mut core = Core::new().unwrap();
+        let handle = core.handle();
+
+        let local_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+
+        let a = UdpSocket::bind(&local_addr, &handle).unwrap();
+        let (a_sink, a_stream) = a.framed(LineCodec).split();
+        println!("target {:?}", remote_addr);
+
+
+        use std;
+        let sender = a_sink.sink_map_err(|e| {
+            eprintln!("err");
+        }).send_all(rx);
+        //handle.spawn(sender.then(|_| Ok(())));
+        drop(core.run(sender));
+    });
 }

@@ -20,7 +20,16 @@ use std::net::SocketAddr;
 use std::thread;
 
 fn main() {
-    udp::run();
+    let remote_addr: SocketAddr = "127.0.0.1:10000".parse().unwrap();
+    let (tx, rx) = mpsc::channel::<(SocketAddr, Vec<u8>)>(5000);
+    udp::run(10000);
+    udp::sender(10000, rx);
+    let tx = tx.send((remote_addr, b"hoge".to_vec())).wait().unwrap();
+    let tx = tx.send((remote_addr, b"hoge".to_vec())).wait().unwrap();
+    let tx = tx.send((remote_addr, b"hoge".to_vec())).wait().unwrap();
+    let tx = tx.send((remote_addr, b"hoge".to_vec())).wait().unwrap();
+    let tx = tx.send((remote_addr, b"hoge".to_vec())).wait().unwrap();
+    thread::sleep_ms(1000);
 }
 
 #[derive(PartialEq, PartialOrd, Clone, Debug)]
