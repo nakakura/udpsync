@@ -19,17 +19,40 @@ use std::{env, io};
 use std::net::SocketAddr;
 use std::thread;
 
+use futures::Sink;
+
 fn main() {
     let remote_addr: SocketAddr = "127.0.0.1:10000".parse().unwrap();
-    let (tx, rx) = mpsc::channel::<(SocketAddr, Vec<u8>)>(5000);
+    let (mut tx, rx) = mpsc::channel::<(SocketAddr, Vec<u8>)>(5000);
+    let (mut tx_w_sleep, rx_w_sleep) = mpsc::channel::<(DateTime<Utc>, SocketAddr, Vec<Vec<u8>>)>(5000);
     udp::run(10000);
     udp::sender(10000, rx);
-    let tx = tx.send((remote_addr, b"hoge".to_vec())).wait().unwrap();
-    let tx = tx.send((remote_addr, b"hoge".to_vec())).wait().unwrap();
-    let tx = tx.send((remote_addr, b"hoge".to_vec())).wait().unwrap();
-    let tx = tx.send((remote_addr, b"hoge".to_vec())).wait().unwrap();
-    let tx = tx.send((remote_addr, b"hoge".to_vec())).wait().unwrap();
-    thread::sleep_ms(1000);
+
+    thread::spawn(|| {
+        let mut core = Core::new().unwrap();
+        let tx = tx.with_flat_map(|(addr, values): (SocketAddr, Vec<Vec<u8>>)| {
+            stream::iter_ok(values.into_iter().map(move |value| {
+                (addr, value)
+            }))
+        });
+        let rx_w_sleep = rx_w_sleep.fold(tx, |sender, (time, addr, value)| {
+            println!("send {:?} {:?}", value, time);
+            while time > Utc::now() {
+                thread::sleep_ms(1);
+            }
+            Ok(sender.send((addr, value)).wait().unwrap())
+        });
+        drop(core.run(rx_w_sleep));
+    });
+
+    let sec = Duration::milliseconds(500);
+    let mut sendtime = Utc::now();
+    for i in 0..5 {
+        sendtime = sendtime + sec;
+        tx_w_sleep = tx_w_sleep.send((sendtime, remote_addr, vec!(vec!(i * 3), vec!(i * 3 + 1), vec!(i * 3 + 2)))).wait().unwrap();
+    }
+
+    thread::sleep_ms(100000);
 }
 
 #[derive(PartialEq, PartialOrd, Clone, Debug)]

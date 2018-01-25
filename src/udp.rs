@@ -37,7 +37,7 @@ pub fn run(port: u16) {
 
         let (_, a_stream) = a.framed(LineCodec).split();
         let a = a_stream.map_err(|_| ()).fold(0u8, |sum: u8, (addr, x): (SocketAddr, Vec<u8>)| {
-            println!("recv {:?}, {:?}", addr, x);
+            println!("recv {:?}, {:?}", x, Utc::now());
             Ok(sum)
         });
         drop(core.run(a));
@@ -45,6 +45,8 @@ pub fn run(port: u16) {
 }
 
 use futures::Sink;
+
+use chrono::prelude::*;
 
 pub fn sender(port: u16, rx: mpsc::Receiver<(SocketAddr, Vec<u8>)>) {
     let remote_addr: SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
