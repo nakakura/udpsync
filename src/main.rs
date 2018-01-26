@@ -22,11 +22,76 @@ use std::thread;
 
 use futures::Sink;
 
-fn recv_rtp() {
+use std::mem;
 
+#[no_mangle]
+#[derive(Debug)]
+struct CPacket
+{
+    ts: u32,
+    pts: u64,
+}
+
+
+unsafe fn cpacket_to_bytes<'a>(ptr: CPacket) -> [u8;16] {
+    use std::slice;
+    use std::mem;
+
+    unsafe {
+        mem::transmute::<CPacket, [u8;16]>(ptr)
+    }
+}
+
+fn ts_to_time(diff: u32) -> f64 {
+    diff as f64 / (90000 / 1000) as f64
+}
+
+fn recv_rtp() {
+    //recv rtp
+    let (rtp_receiver_tx, rtp_receiver_rx) = mpsc::channel::<Vec<u8>>(5000);
+    udp::run(60000, rtp_receiver_tx);
+
+    //send timestamp,pts
+    let (ts_sender_tx, ts_sender_rx) = mpsc::channel::<(SocketAddr, Vec<u8>)>(5000);
+    udp::sender(10000, ts_sender_rx);
+
+    thread::spawn(|| {
+        let mut core = Core::new().unwrap();
+        let r = rtp_receiver_rx.map(|buf| {
+            unsafe {
+                rtp::timestamp(buf.as_ptr())
+            }
+        }).fold((ts_sender_tx, 0, None), |(sender, sum, last_ts), ts: u32| {
+            let packet = CPacket {
+                ts: ts,
+                pts: sum,
+            };
+
+            let data: Vec<u8> = unsafe {
+                cpacket_to_bytes(packet).to_vec()
+            };
+
+            let mut diff = 0;
+            if let Some(last_ts) = last_ts {
+                diff = ts - last_ts;
+            }
+
+            let time_diff = ts_to_time(diff);
+
+            let data_ptr: *const u8 = data.as_ptr();
+            let header_ptr: *const CPacket = data_ptr as *const _;
+            let padding_ref: &CPacket = unsafe { &*header_ptr };
+            println!("{:?}", sum + time_diff as u64);
+            Ok((sender, sum + time_diff as u64, Some(ts)))
+        });
+        core.run(r);
+    });
 }
 
 fn main() {
+    recv_rtp();
+
+    /*
     let remote_addr: SocketAddr = "127.0.0.1:10000".parse().unwrap();
     let (mut tx, rx) = mpsc::channel::<(SocketAddr, Vec<u8>)>(5000);
     let (mut tx_w_sleep, rx_w_sleep) = mpsc::channel::<(DateTime<Utc>, SocketAddr, Vec<Vec<u8>>)>(5000);
@@ -48,7 +113,7 @@ fn main() {
         });
         core.run(r);
     });
-
+*/
     /*
     thread::spawn(|| {
         let mut core = Core::new().unwrap();
@@ -66,7 +131,6 @@ fn main() {
         });
         drop(core.run(rx_w_sleep));
     });
-*/
 
     let sec = Duration::milliseconds(500);
     let mut sendtime = Utc::now();
@@ -75,6 +139,7 @@ fn main() {
         tx_w_sleep = tx_w_sleep.send((sendtime, remote_addr, vec!(vec!(i * 3), vec!(i * 3 + 1), vec!(i * 3 + 2)))).wait().unwrap();
     }
 
+*/
     thread::sleep_ms(100000);
 }
 
