@@ -7,6 +7,7 @@ extern crate chrono;
 extern crate tokio_io;
 
 pub mod udp;
+pub mod rtp;
 
 use chrono::prelude::*;
 use chrono::Duration;
@@ -21,13 +22,34 @@ use std::thread;
 
 use futures::Sink;
 
+fn recv_rtp() {
+
+}
+
 fn main() {
     let remote_addr: SocketAddr = "127.0.0.1:10000".parse().unwrap();
     let (mut tx, rx) = mpsc::channel::<(SocketAddr, Vec<u8>)>(5000);
     let (mut tx_w_sleep, rx_w_sleep) = mpsc::channel::<(DateTime<Utc>, SocketAddr, Vec<Vec<u8>>)>(5000);
-    udp::run(10000);
+
+    let (mut tx_recv, rx_recv) = mpsc::channel::<Vec<u8>>(5000);
+    udp::run(10000, tx_recv);
     udp::sender(10000, rx);
 
+    thread::spawn(|| {
+        let mut core = Core::new().unwrap();
+        let r = rx_recv.map(|buf| {
+            let ts = unsafe {
+                rtp::timestamp(buf.as_ptr())
+            };
+            (ts, buf)
+        }).for_each(|x| {
+            println!("{:?}", x);
+            Ok(())
+        });
+        core.run(r);
+    });
+
+    /*
     thread::spawn(|| {
         let mut core = Core::new().unwrap();
         let tx = tx.with_flat_map(|(addr, values): (SocketAddr, Vec<Vec<u8>>)| {
@@ -44,6 +66,7 @@ fn main() {
         });
         drop(core.run(rx_w_sleep));
     });
+*/
 
     let sec = Duration::milliseconds(500);
     let mut sendtime = Utc::now();

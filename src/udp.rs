@@ -25,7 +25,7 @@ impl UdpCodec for LineCodec {
     }
 }
 
-pub fn run(port: u16) {
+pub fn run(port: u16, tx: mpsc::Sender<Vec<u8>>) {
     let _ = thread::spawn(move || {
         let mut core = Core::new().unwrap();
         let handle = core.handle();
@@ -36,9 +36,10 @@ pub fn run(port: u16) {
         println!("{:?}", a.local_addr().unwrap());
 
         let (_, a_stream) = a.framed(LineCodec).split();
-        let a = a_stream.map_err(|_| ()).fold(0u8, |sum: u8, (addr, x): (SocketAddr, Vec<u8>)| {
+        let a = a_stream.map_err(|_| ()).fold(tx, |sender, (addr, x): (SocketAddr, Vec<u8>)| {
             println!("recv {:?}, {:?}", x, Utc::now());
-            Ok(sum)
+            let sender = sender.send(x).wait().unwrap();
+            Ok(sender)
         });
         drop(core.run(a));
     });
@@ -68,4 +69,9 @@ pub fn sender(port: u16, rx: mpsc::Receiver<(SocketAddr, Vec<u8>)>) {
         //handle.spawn(sender.then(|_| Ok(())));
         drop(core.run(sender));
     });
+}
+
+struct PaddingFormat {
+    ts: u32,
+    pts: u64,
 }

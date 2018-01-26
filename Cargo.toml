@@ -2,6 +2,7 @@
 name = "udpsync"
 version = "0.1.0"
 authors = ["Toshiya Nakakura <nakakura@me.com>"]
+build = "build.rs"
 
 [dependencies]
 futures = "0.1.17"
@@ -10,3 +11,6 @@ tokio-io = "*"
 either = "1.4"
 chrono = "*"
 env_logger = { version = "0.4", default-features = false }
+
+[build-dependencies]
+gcc = "*"
