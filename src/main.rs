@@ -43,7 +43,7 @@ unsafe fn cpacket_to_bytes<'a>(ptr: CPacket) -> [u8;16] {
 }
 
 fn ts_to_time(diff: u32) -> f64 {
-    diff as f64 / (90000 / 1000) as f64
+    diff as f64 / (90000) as f64 * 1000f64 * 1000f64 * 1000f64
 }
 
 fn recv_rtp() {
