@@ -1,13 +1,13 @@
-use std::{env, io};
+use std::io;
 use std::net::SocketAddr;
 use std::thread;
 
-use future;
-use futures::{Future, Poll, Stream};
 use tokio_core::net::UdpSocket;
-use tokio_core::reactor::{ Core, Handle };
+use tokio_core::reactor::Core;
 use tokio_core::net::UdpCodec;
+use futures::{Future, Stream};
 use futures::sync::mpsc;
+use futures::Sink;
 
 pub struct LineCodec;
 
@@ -25,53 +25,37 @@ impl UdpCodec for LineCodec {
     }
 }
 
-pub fn run(port: u16, tx: mpsc::Sender<Vec<u8>>) {
-    let _ = thread::spawn(move || {
+pub fn receiver(addr: SocketAddr, tx: mpsc::Sender<Vec<u8>>) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
         let mut core = Core::new().unwrap();
         let handle = core.handle();
 
-        let addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
-
         let a = UdpSocket::bind(&addr, &handle).unwrap();
-        println!("{:?}", a.local_addr().unwrap());
 
         let (_, a_stream) = a.framed(LineCodec).split();
-        let a = a_stream.map_err(|_| ()).fold(tx, |sender, (addr, x): (SocketAddr, Vec<u8>)| {
-            println!("recv {:?}, {:?}", x, Utc::now());
+        let a = a_stream.map_err(|_| ()).fold(tx, |sender, (_, x): (SocketAddr, Vec<u8>)| {
             let sender = sender.send(x).wait().unwrap();
             Ok(sender)
         });
         drop(core.run(a));
-    });
+    })
 }
 
-use futures::Sink;
-
-use chrono::prelude::*;
-
-pub fn sender(port: u16, rx: mpsc::Receiver<(SocketAddr, Vec<u8>)>) {
-    let remote_addr: SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
-    let _ = thread::spawn(move || {
+pub fn send_all<S>(stream: S) -> thread::JoinHandle<()>
+    where S: Stream<Item=(SocketAddr, Vec<u8>), Error=()> + Send + Sized + 'static {
+    thread::spawn(move || {
         let mut core = Core::new().unwrap();
         let handle = core.handle();
 
         let local_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
 
         let a = UdpSocket::bind(&local_addr, &handle).unwrap();
-        let (a_sink, a_stream) = a.framed(LineCodec).split();
-        println!("target {:?}", remote_addr);
+        let (a_sink, _) = a.framed(LineCodec).split();
 
-
-        use std;
-        let sender = a_sink.sink_map_err(|e| {
+        let sender = a_sink.sink_map_err(|_e| {
             eprintln!("err");
-        }).send_all(rx);
+        }).send_all(stream);
         //handle.spawn(sender.then(|_| Ok(())));
         drop(core.run(sender));
-    });
-}
-
-struct PaddingFormat {
-    ts: u32,
-    pts: u64,
+    })
 }
