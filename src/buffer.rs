@@ -7,9 +7,9 @@ use futures::sync::mpsc;
 use haptic_data::HapticData;
 
 #[derive(PartialEq, PartialOrd, Clone, Debug)]
-struct PlayTimingGap(pub (DateTime<Utc>, DateTime<Utc>)); //data from gstreamer
+pub struct PlayTimingGap(pub (DateTime<Utc>, DateTime<Utc>)); //data from gstreamer
 #[derive(PartialEq, PartialOrd, Clone, Debug)]
-struct PlayDataAndTime(pub (Vec<Vec<u8>>, DateTime<Utc>)); //data for send
+pub struct PlayDataAndTime(pub (Vec<Vec<u8>>, DateTime<Utc>)); //data for send
 
 impl PlayDataAndTime {
     pub fn len(&self) -> usize {

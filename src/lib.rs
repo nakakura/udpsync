@@ -12,4 +12,5 @@ pub mod udp;
 pub mod rtp;
 pub mod haptic_data;
 pub mod buffer;
+pub mod gstreamer_mock;
 
