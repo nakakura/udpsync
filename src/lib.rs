@@ -5,7 +5,10 @@ extern crate futures;
 extern crate tokio_core;
 extern crate chrono;
 extern crate tokio_io;
+extern crate bincode;
+extern crate rustc_serialize;
 
 pub mod udp;
 pub mod rtp;
+pub mod haptic_data;
 
