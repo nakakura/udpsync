@@ -11,4 +11,5 @@ extern crate rustc_serialize;
 pub mod udp;
 pub mod rtp;
 pub mod haptic_data;
+pub mod buffer;
 

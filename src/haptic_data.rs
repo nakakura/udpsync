@@ -3,11 +3,18 @@ use bincode::{serialize, deserialize, Bounded, ErrorKind};
 
 #[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub struct HapticData {
-    buf: Vec<u8>,
-    timestamp: DateTime<Utc>,
+    pub buf: Vec<u8>,
+    pub timestamp: DateTime<Utc>,
 }
 
 impl HapticData {
+    pub fn new(buf: Vec<u8>, ts: DateTime<Utc>) -> Self {
+         HapticData {
+            buf: buf,
+            timestamp: ts
+        }
+    }
+
     pub fn encode(&self) -> Result<Vec<u8>, Box<ErrorKind>> {
         let limit = Bounded(1500);
         let timestamp = self.timestamp.naive_utc();
