@@ -21,6 +21,13 @@ use udpsync::haptic_data::HapticData;
 use udpsync::buffer::*;
 
 fn main() {
+    let (tx, rx) = mpsc::channel::<Vec<u8>>(5000);
+    let tx = tx.with_flat_map(|values: Vec<Vec<u8>>| {
+        stream::iter_ok(values.into_iter().map(move |value| {
+            value
+        }))
+    });
+
     let (recv_ts_tx, recv_ts_rx) = mpsc::channel::<(Option<HapticData>, Option<PlayTimingGap>)>(5000);
     let (redirect_hapt_tx, redirect_hapt_rx) = mpsc::channel::<(Option<HapticData>, Option<PlayTimingGap>)>(5000);
     let hapt_play_rx = recv_ts_rx.select(redirect_hapt_rx);
@@ -34,14 +41,25 @@ fn main() {
     let th_redirect2 = thread::spawn(move || {
         let mut core = Core::new().unwrap();
 
-        let r = receiver.for_each(|x| {
-            let PlayDataAndTime((x1, x2)) = x;
-            println!("out hapt {:?}", x1.len());
+        let r = receiver.fold(tx, |sender, PlayDataAndTime((vec, time))| {
+            while time > Utc::now() - Duration::seconds(1) {
+                println!("loop");
+                thread::sleep_ms(1);
+            }
+            let sender = sender.send(vec).wait().unwrap();
+            Ok(sender)
+        });
+        let _ = core.run(r);
+    });
+    let th_redirect3 = thread::spawn(move || {
+        let mut core = Core::new().unwrap();
+
+        let r = rx.for_each(|x|{
+            println!("{} {:?}", x.len(), x);
             Ok(())
         });
         let _ = core.run(r);
     });
-
     //gst-mock
     let local_sock: SocketAddr = format!("127.0.0.1:{}", 30000).parse().unwrap();
     let remote_sock: SocketAddr = format!("127.0.0.1:{}", 60000).parse().unwrap();
