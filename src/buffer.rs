@@ -38,21 +38,24 @@ fn extract_playabledata(mut data: Vec<HapticData>, &PlayTimingGap(time): &PlayTi
 /// RTPタイムスタンプと再生時刻のペアはそれぞれ再生開始時点からの相対位置であるので、
 /// この関数に入れる前に受信側ローカルクロックへ変換が必要である
 /// 送信するときは再生予定時刻を付けて送る
-fn check_time(sum: (mpsc::Sender<PlayDataAndTime>, Vec<HapticData>, PlayTimingGap), acc: (Option<HapticData>, Option<PlayTimingGap>)) -> (mpsc::Sender<PlayDataAndTime>, Vec<HapticData>, PlayTimingGap){
+pub fn check_time(sum: (mpsc::Sender<PlayDataAndTime>, Vec<HapticData>, Option<PlayTimingGap>), acc: (Option<HapticData>, Option<PlayTimingGap>)) -> Result<(mpsc::Sender<PlayDataAndTime>, Vec<HapticData>, Option<PlayTimingGap>), ()>{
     match acc {
         (Some(t), _) => {
             let mut data = sum.1;
             data.push(t);
+            if let Some(ref gap) = sum.2 {
+                let (nonplayable, play_data) = extract_playabledata(data, gap);
+                let sender = if play_data.len() > 0 {
+                    sum.0.send(play_data).wait().unwrap()
+                } else {
+                    sum.0
+                };
 
-            let (nonplayable, play_data) = extract_playabledata(data, &sum.2);
-            let sender = if play_data.len() > 0 {
-                sum.0.send(play_data).wait().unwrap()
+                Ok((sender, nonplayable, Some(gap.clone())))
             } else {
-                sum.0
-            };
-
-            (sender, nonplayable, sum.2)
-        },
+                Ok((sum.0 ,data, None))
+            }
+       },
         (_, Some(p)) => {
             let (nonplayable, play_data) = extract_playabledata(sum.1, &p);
             let sender = if play_data.len() > 0 {
@@ -61,10 +64,10 @@ fn check_time(sum: (mpsc::Sender<PlayDataAndTime>, Vec<HapticData>, PlayTimingGa
                 sum.0
             };
 
-            (sender, nonplayable, p)
+            Ok((sender, nonplayable, Some(p)))
         },
         _ => {
-            sum
+            Ok(sum)
         }
     }
 }
@@ -121,10 +124,10 @@ fn test_check_time_insert_data() {
     let pt = PlayTimingGap((time_origin, time_origin));
 
     let (sender, _) = mpsc::channel::<PlayDataAndTime>(5000);
-    let sum = check_time((sender, vec!(), pt.clone()), (Some(acc0.clone()), None));
-    let sum = check_time(sum, (Some(acc1.clone()), None));
+    let sum = check_time((sender, vec!(), Some(pt.clone())), (Some(acc0.clone()), None)).unwrap();
+    let sum = check_time(sum, (Some(acc1.clone()), None)).unwrap();
     assert_eq!(sum.1, vec!(acc0, acc1));
-    assert_eq!(sum.2, pt);
+    assert_eq!(sum.2, Some(pt));
 }
 
 #[test]
@@ -166,12 +169,12 @@ fn test_check_time_extract_data() {
     let time_origin = Utc.timestamp(0, 0);
     let pt = PlayTimingGap((time_origin, time_origin));
 
-    let sum = check_time((sender, vec!(), pt), (Some(acc0.clone()), None));
-    let sum = check_time(sum, (Some(acc1.clone()), None));
-    let sum = check_time(sum, (Some(acc2.clone()), None));
-    let sum = check_time(sum, (Some(acc3.clone()), None));
-    let sum = check_time(sum, (Some(acc4.clone()), None));
-    let sum = check_time(sum, (None, Some(PlayTimingGap((time_ts, time_pt)))));
+    let sum = check_time((sender, vec!(), Some(pt)), (Some(acc0.clone()), None)).unwrap();
+    let sum = check_time(sum, (Some(acc1.clone()), None)).unwrap();
+    let sum = check_time(sum, (Some(acc2.clone()), None)).unwrap();
+    let sum = check_time(sum, (Some(acc3.clone()), None)).unwrap();
+    let sum = check_time(sum, (Some(acc4.clone()), None)).unwrap();
+    let sum = check_time(sum, (None, Some(PlayTimingGap((time_ts, time_pt))))).unwrap();
     let x = receiver.wait().next().unwrap();
     assert_eq!(x, Ok(PlayDataAndTime((
         vec!(data1, data2, data3),
@@ -188,9 +191,9 @@ fn test_check_time_insert_time() {
 
     let time_origin = Utc.timestamp(0, 0);
     let pt = PlayTimingGap((time_origin, time_origin));
-    let sum = check_time((sender, vec!(), pt), (None, Some(PlayTimingGap((time_ts, time_pt)))));
+    let sum = check_time((sender, vec!(), Some(pt)), (None, Some(PlayTimingGap((time_ts, time_pt))))).unwrap();
     assert_eq!(sum.1, vec!());
-    assert_eq!(sum.2, PlayTimingGap((time_ts, time_pt)));
+    assert_eq!(sum.2, Some(PlayTimingGap((time_ts, time_pt))));
 }
 
 #[test]
@@ -207,13 +210,13 @@ fn test_check_time_insert_time_many_times() {
     let pt = PlayTimingGap((time_origin, time_origin));
 
     let (sender, _) = mpsc::channel::<PlayDataAndTime>(5000);
-    let sum = check_time((sender, vec!(), pt), (None, Some(PlayTimingGap((time_ts, time_pt)))));
-    let sum = check_time(sum, (None, Some(PlayTimingGap((time_ts2, time_pt)))));
-    let sum = check_time(sum, (None, Some(PlayTimingGap((time_ts3, time_pt)))));
-    let sum = check_time(sum, (None, Some(PlayTimingGap((time_ts4, time_pt)))));
-    let sum = check_time(sum, (None, Some(PlayTimingGap((time_ts5, time_pt)))));
+    let sum = check_time((sender, vec!(), Some(pt)), (None, Some(PlayTimingGap((time_ts, time_pt))))).unwrap();
+    let sum = check_time(sum, (None, Some(PlayTimingGap((time_ts2, time_pt))))).unwrap();
+    let sum = check_time(sum, (None, Some(PlayTimingGap((time_ts3, time_pt))))).unwrap();
+    let sum = check_time(sum, (None, Some(PlayTimingGap((time_ts4, time_pt))))).unwrap();
+    let sum = check_time(sum, (None, Some(PlayTimingGap((time_ts5, time_pt))))).unwrap();
     assert_eq!(sum.1, vec!());
-    assert_eq!(sum.2, PlayTimingGap((time_ts5, time_pt)));
+    assert_eq!(sum.2, Some(PlayTimingGap((time_ts5, time_pt))));
 }
 
 #[test]
@@ -229,10 +232,10 @@ fn test_check_time_insert_time_and_data_too_old() {
     let pt = PlayTimingGap((time_origin, time_origin));
 
     let (sender, _) = mpsc::channel::<PlayDataAndTime>(5000);
-    let sum = check_time((sender, vec!(), pt), (None, Some(PlayTimingGap((time_ts, time_pt)))));
-    let sum = check_time(sum, (Some(acc0.clone()), None));
+    let sum = check_time((sender, vec!(), Some(pt)), (None, Some(PlayTimingGap((time_ts, time_pt))))).unwrap();
+    let sum = check_time(sum, (Some(acc0.clone()), None)).unwrap();
     assert_eq!(sum.1, vec!());
-    assert_eq!(sum.2, PlayTimingGap((time_ts, time_pt)));
+    assert_eq!(sum.2.unwrap(), PlayTimingGap((time_ts, time_pt)));
 }
 
 #[test]
@@ -250,13 +253,13 @@ fn test_check_time_insert_time_and_data_playable() {
 
     let (sender, receiver) = mpsc::channel::<PlayDataAndTime>(5000);
     let time_pt2 = Utc.timestamp(10, 0);
-    let sum = check_time((sender, vec!(), pt), (None, Some(PlayTimingGap((time_ts, time_pt)))));
-    let sum = check_time(sum, (Some(acc0), None));
+    let sum = check_time((sender, vec!(), Some(pt)), (None, Some(PlayTimingGap((time_ts, time_pt))))).unwrap();
+    let sum = check_time(sum, (Some(acc0), None)).unwrap();
 
     let x = receiver.wait().next().unwrap();
     assert_eq!(x, Ok(PlayDataAndTime((vec!(data0), time_pt2))));
     assert_eq!(sum.1, vec!());
-    assert_eq!(sum.2, PlayTimingGap((time_ts, time_pt)));
+    assert_eq!(sum.2.unwrap(), PlayTimingGap((time_ts, time_pt)));
 }
 
 #[test]
@@ -272,9 +275,9 @@ fn test_check_time_insert_time_and_data_nonplayable() {
     let pt = PlayTimingGap((time_origin, time_origin));
 
     let (sender, _) = mpsc::channel::<PlayDataAndTime>(5000);
-    let sum = check_time((sender, vec!(), pt), (None, Some(PlayTimingGap((time_ts, time_pt)))));
-    let sum = check_time(sum, (Some(acc0.clone()), None));
+    let sum = check_time((sender, vec!(), Some(pt)), (None, Some(PlayTimingGap((time_ts, time_pt))))).unwrap();
+    let sum = check_time(sum, (Some(acc0.clone()), None)).unwrap();
 
     assert_eq!(sum.1, vec!(acc0));
-    assert_eq!(sum.2, PlayTimingGap((time_ts, time_pt)));
+    assert_eq!(sum.2.unwrap(), PlayTimingGap((time_ts, time_pt)));
 }

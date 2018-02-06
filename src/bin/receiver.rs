@@ -18,9 +18,30 @@ use std::net::SocketAddr;
 use std::thread;
 
 use udpsync::haptic_data::HapticData;
-use udpsync::buffer::PlayTimingGap;
+use udpsync::buffer::*;
 
 fn main() {
+    let (recv_ts_tx, recv_ts_rx) = mpsc::channel::<(Option<HapticData>, Option<PlayTimingGap>)>(5000);
+    let (redirect_hapt_tx, redirect_hapt_rx) = mpsc::channel::<(Option<HapticData>, Option<PlayTimingGap>)>(5000);
+    let hapt_play_rx = recv_ts_rx.select(redirect_hapt_rx);
+    let (sender, receiver) = mpsc::channel::<PlayDataAndTime>(5000);
+    let th_redirect1 = thread::spawn(move || {
+        let mut core = Core::new().unwrap();
+
+        let r = hapt_play_rx.fold((sender, vec!(), None), check_time);
+        let _ = core.run(r);
+    });
+    let th_redirect2 = thread::spawn(move || {
+        let mut core = Core::new().unwrap();
+
+        let r = receiver.for_each(|x| {
+            let PlayDataAndTime((x1, x2)) = x;
+            println!("out hapt {:?}", x1.len());
+            Ok(())
+        });
+        let _ = core.run(r);
+    });
+
     //gst-mock
     let local_sock: SocketAddr = format!("127.0.0.1:{}", 30000).parse().unwrap();
     let remote_sock: SocketAddr = format!("127.0.0.1:{}", 60000).parse().unwrap();
@@ -40,12 +61,10 @@ fn main() {
     let th_hapt_1 = udpsync::udp::receiver(bind_addr_hapt, recv_hapt_tx);
     let th_hapt_2 = thread::spawn(|| {
         let mut core = Core::new().unwrap();
-        let r = recv_hapt_rx.map(|x| {
+        let r = recv_hapt_rx.fold(redirect_hapt_tx, |sender, x| {
             let data = HapticData::decode(&x);
-            (data, None)
-        }).for_each(|x: (HapticData, Option<PlayTimingGap>)| {
-            println!("{:?}", x.0.timestamp);
-            Ok(())
+            let sender = sender.send((Some(data), None)).wait().unwrap();
+            Ok(sender)
         });
         let _ = core.run(r);
     });
@@ -56,7 +75,7 @@ fn main() {
     let th_rtp_1 = udpsync::udp::receiver(bind_addr_rtp, recv_rtp_tx);
     let _ = thread::spawn(|| {
         let mut core = Core::new().unwrap();
-        let r = recv_rtp_rx.fold((None, None), |(initial_time_opt, initial_ts_opt): (Option<DateTime<Utc>>, Option<u32>), x| {
+        let r = recv_rtp_rx.fold((recv_ts_tx, None, None), |(sender, initial_time_opt, initial_ts_opt), x| {
             let data_ptr: *const u8 = x.as_ptr();
             let header_ptr: *const CPacket = data_ptr as *const _;
             let padding_ref: &CPacket = unsafe { &*header_ptr };
@@ -69,8 +88,15 @@ fn main() {
             let source_timestamp = initial_time + Duration::nanoseconds(diff as i64);
             let play_time = initial_time + Duration::nanoseconds(padding_ref.pts as i64);
 
+            let sender = sender.send(
+                (
+                    None,
+                    Some(PlayTimingGap((source_timestamp, play_time)))
+                )
+            ).wait().unwrap();
+
             //println!("pts {:?}, {:?}", source_timestamp, play_time);
-            Ok((Some(initial_time), Some(initial_ts)))
+            Ok((sender, Some(initial_time), Some(initial_ts)))
         });
         let _ = core.run(r);
     }).join();
