@@ -47,13 +47,13 @@ pub fn sender<S>(stream: S) -> thread::JoinHandle<()>
         let mut core = Core::new().unwrap();
         let handle = core.handle();
 
-        let local_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+        let local_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
 
         let a = UdpSocket::bind(&local_addr, &handle).unwrap();
         let (a_sink, _) = a.framed(LineCodec).split();
 
-        let sender = a_sink.sink_map_err(|_e| {
-            eprintln!("err");
+        let sender = a_sink.sink_map_err(|e| {
+            eprintln!("err {:?}", e);
         }).send_all(stream);
         //handle.spawn(sender.then(|_| Ok(())));
         drop(core.run(sender));

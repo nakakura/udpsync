@@ -42,8 +42,7 @@ fn main() {
         let mut core = Core::new().unwrap();
 
         let r = receiver.fold(tx, |sender, PlayDataAndTime((vec, time))| {
-            while time > Utc::now() - Duration::seconds(1) {
-                println!("loop");
+            while time > Utc::now() {
                 thread::sleep_ms(1);
             }
             let sender = sender.send(vec).wait().unwrap();
@@ -51,29 +50,26 @@ fn main() {
         });
         let _ = core.run(r);
     });
-    let th_redirect3 = thread::spawn(move || {
-        let mut core = Core::new().unwrap();
 
-        let r = rx.for_each(|x|{
-            println!("{} {:?}", x.len(), x);
-            Ok(())
-        });
-        let _ = core.run(r);
-    });
+    let target: SocketAddr = format!("8.8.8.8:{}", 60011).parse().unwrap();
+    let th_redirect = udpsync::udp::sender(rx.map(move |x| {
+        (target, x)
+    }));
+
     //gst-mock
-    let local_sock: SocketAddr = format!("127.0.0.1:{}", 30000).parse().unwrap();
+    let local_sock: SocketAddr = format!("0.0.0.0:{}", 30000).parse().unwrap();
     let remote_sock: SocketAddr = format!("127.0.0.1:{}", 60000).parse().unwrap();
     let th_gst = udpsync::gstreamer_mock::recv_rtp(local_sock, remote_sock);
 
     //recv rtp from sender and redirect it to gstreamer
-    let bind_addr_rtp: SocketAddr = format!("127.0.0.1:{}", 20000).parse().unwrap();
+    let bind_addr_rtp: SocketAddr = format!("0.0.0.0:{}", 20000).parse().unwrap();
     let target_addr_rtp: SocketAddr = format!("127.0.0.1:{}", 30000).parse().unwrap();
     let (recv_rtp_tx, recv_rtp_rx) = mpsc::channel::<Vec<u8>>(5000);
     let th_rtp_1 = udpsync::udp::receiver(bind_addr_rtp, recv_rtp_tx);
     let th_rtp_2 = udpsync::udp::sender(recv_rtp_rx.map(move |x| (target_addr_rtp, x)));
 
     //recv hapt data from sender and redirect it to haptic player through ring buffer
-    let bind_addr_hapt: SocketAddr = format!("127.0.0.1:{}", 20001).parse().unwrap();
+    let bind_addr_hapt: SocketAddr = format!("0.0.0.0:{}", 20001).parse().unwrap();
     let target_addr_hapt: SocketAddr = format!("127.0.0.1:{}", 30001).parse().unwrap();
     let (recv_hapt_tx, recv_hapt_rx) = mpsc::channel::<Vec<u8>>(5000);
     let th_hapt_1 = udpsync::udp::receiver(bind_addr_hapt, recv_hapt_tx);
@@ -88,7 +84,7 @@ fn main() {
     });
 
     //recv data from gst_mock
-    let bind_addr_rtp: SocketAddr = format!("127.0.0.1:{}", 60000).parse().unwrap();
+    let bind_addr_rtp: SocketAddr = format!("0.0.0.0:{}", 60000).parse().unwrap();
     let (recv_rtp_tx, recv_rtp_rx) = mpsc::channel::<Vec<u8>>(5000);
     let th_rtp_1 = udpsync::udp::receiver(bind_addr_rtp, recv_rtp_tx);
     let _ = thread::spawn(|| {
