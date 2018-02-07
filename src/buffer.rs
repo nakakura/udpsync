@@ -4,7 +4,15 @@ use futures::*;
 use futures::Sink;
 use futures::sync::mpsc;
 
+use std::sync::RwLock;
+
 use haptic_data::HapticData;
+
+lazy_static! {
+    pub static ref OFFSET: RwLock<i32> = {
+        RwLock::new(0)
+    };
+}
 
 #[derive(PartialEq, PartialOrd, Clone, Debug)]
 pub struct PlayTimingGap(pub (DateTime<Utc>, DateTime<Utc>)); //data from gstreamer
@@ -18,10 +26,16 @@ impl PlayDataAndTime {
     }
 }
 
+pub fn set_offset(offset: i32) {
+    *OFFSET.write().unwrap() = offset;
+}
+
 fn extract_playabledata(mut data: Vec<HapticData>, &PlayTimingGap(time): &PlayTimingGap) -> (Vec<HapticData>, PlayDataAndTime) {
+    let offset = (*OFFSET.read().unwrap()) as i64;
+    println!("offset {}", offset);
     //古すぎるデータは再生せず捨てる
     let _too_old_data = data.drain_filter(|ref mut x| {
-        x.timestamp < time.0 - Duration::milliseconds(16)
+        x.timestamp < time.0 - Duration::milliseconds(16) + Duration::milliseconds(offset)
     }).collect::<Vec<_>>();
 
     if _too_old_data.len() > 0 {
@@ -30,7 +44,7 @@ fn extract_playabledata(mut data: Vec<HapticData>, &PlayTimingGap(time): &PlayTi
 
     //再生データの取り出し
     let playable_data = data.drain_filter(|ref mut x| {
-        x.timestamp <= time.0 + Duration::microseconds(16666)
+        x.timestamp <= time.0 + Duration::microseconds(16666) + Duration::milliseconds(offset)
     }).map(|x| x.buf).collect::<Vec<_>>();
 
     (data, PlayDataAndTime((playable_data, time.1)))

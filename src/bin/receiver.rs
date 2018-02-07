@@ -21,6 +21,8 @@ use udpsync::haptic_data::HapticData;
 use udpsync::buffer::*;
 
 fn main() {
+    let th_key = udpsync::keyboard::get_keyboard(udpsync::buffer::set_offset);
+
     let (tx, rx) = mpsc::channel::<Vec<u8>>(5000);
     let tx = tx.with_flat_map(|values: Vec<Vec<u8>>| {
         stream::iter_ok(values.into_iter().map(move |value| {
@@ -113,6 +115,7 @@ fn main() {
         let _ = core.run(r);
     }).join();
 
+    let _ = th_key.join();
     let _ = th_gst.join();
     let _ = th_rtp_1.join();
     let _ = th_rtp_2.join();
