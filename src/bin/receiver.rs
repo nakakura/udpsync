@@ -51,7 +51,7 @@ fn main() {
         let _ = core.run(r);
     });
 
-    let target: SocketAddr = format!("8.8.8.8:{}", 60011).parse().unwrap();
+    let target: SocketAddr = format!("127.0.0.1:{}", 30001).parse().unwrap();
     let th_redirect = udpsync::udp::sender(rx.map(move |x| {
         (target, x)
     }));
@@ -70,7 +70,6 @@ fn main() {
 
     //recv hapt data from sender and redirect it to haptic player through ring buffer
     let bind_addr_hapt: SocketAddr = format!("0.0.0.0:{}", 20001).parse().unwrap();
-    let target_addr_hapt: SocketAddr = format!("127.0.0.1:{}", 30001).parse().unwrap();
     let (recv_hapt_tx, recv_hapt_rx) = mpsc::channel::<Vec<u8>>(5000);
     let th_hapt_1 = udpsync::udp::receiver(bind_addr_hapt, recv_hapt_tx);
     let th_hapt_2 = thread::spawn(|| {
@@ -93,7 +92,6 @@ fn main() {
             let data_ptr: *const u8 = x.as_ptr();
             let header_ptr: *const CPacket = data_ptr as *const _;
             let padding_ref: &CPacket = unsafe { &*header_ptr };
-
 
             let initial_time = initial_time_opt.unwrap_or(Utc::now());
             let initial_ts = initial_ts_opt.unwrap_or(padding_ref.ts);

@@ -33,6 +33,8 @@ pub fn recv_rtp(local_sock:SocketAddr, remote_sock: SocketAddr) -> thread::JoinH
             }
 
             let sum = sum + ts_to_time(diff) as u64;
+            use chrono::*;
+            println!("diff {:?} {:?}", sum, Utc::now());
             let packet = CPacket {
                 ts: ts,
                 pts: sum,
