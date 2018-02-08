@@ -1,4 +1,4 @@
-#![feature(drain_filter)] extern crate env_logger;
+#![feature(drain_filter)]
 extern crate futures;
 #[macro_use] extern crate tokio_core;
 extern crate chrono;

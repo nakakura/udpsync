@@ -1,4 +1,4 @@
-#![feature(drain_filter)] extern crate env_logger;
+#![feature(drain_filter)]
 extern crate futures;
 extern crate chrono;
 extern crate tokio_io;
@@ -58,11 +58,6 @@ fn main() {
         (target, x)
     }));
 
-    //gst-mock
-    let local_sock: SocketAddr = format!("0.0.0.0:{}", 30000).parse().unwrap();
-    let remote_sock: SocketAddr = format!("127.0.0.1:{}", 60000).parse().unwrap();
-    let th_gst = udpsync::gstreamer_mock::recv_rtp(local_sock, remote_sock);
-
     //recv rtp from sender and redirect it to gstreamer
     let bind_addr_rtp: SocketAddr = format!("0.0.0.0:{}", 20000).parse().unwrap();
     let target_addr_rtp: SocketAddr = format!("127.0.0.1:{}", 30000).parse().unwrap();
@@ -84,24 +79,30 @@ fn main() {
         let _ = core.run(r);
     });
 
-    //recv data from gst_mock
+    //recv ts, pts from gstreamer
     let bind_addr_rtp: SocketAddr = format!("0.0.0.0:{}", 60000).parse().unwrap();
     let (recv_rtp_tx, recv_rtp_rx) = mpsc::channel::<Vec<u8>>(5000);
     let th_rtp_1 = udpsync::udp::receiver(bind_addr_rtp, recv_rtp_tx);
     let _ = thread::spawn(|| {
         let mut core = Core::new().unwrap();
-        let r = recv_rtp_rx.fold((recv_ts_tx, None, None), |(sender, initial_time_opt, initial_ts_opt), x| {
+        let r = recv_rtp_rx.fold((recv_ts_tx, None, None, None, None), |(sender, initial_time_opt, prev_ts_opt, ts_diff_sum_opt, initial_pts_opt), x| {
             let data_ptr: *const u8 = x.as_ptr();
             let header_ptr: *const CPacket = data_ptr as *const _;
             let padding_ref: &CPacket = unsafe { &*header_ptr };
-
+            println!("{:?}", padding_ref);
             let initial_time = initial_time_opt.unwrap_or(Utc::now());
-            let initial_ts = initial_ts_opt.unwrap_or(padding_ref.ts);
+            let initial_pts = initial_pts_opt.unwrap_or(padding_ref.pts);
+            let prev_ts = prev_ts_opt.unwrap_or(padding_ref.ts as u64);
+            let ts_diff_sum: u64 = ts_diff_sum_opt.unwrap_or(0);
 
-            let diff = udpsync::gstreamer_mock::ts_to_time(padding_ref.ts - initial_ts) as i64;
-            let source_timestamp = initial_time + Duration::nanoseconds(diff as i64);
-            let play_time = initial_time + Duration::nanoseconds(padding_ref.pts as i64);
+            let ts_diff: u64 = (padding_ref.ts as u64 + std::u32::MAX as u64 - prev_ts) % std::u32::MAX as u64;
+            let ts_diff_sum = ts_diff_sum + ts_diff;
+            let diff = udpsync::gstreamer_mock::ts_to_time(ts_diff_sum) as i64;
+            let source_timestamp = initial_time + Duration::milliseconds(diff);
+            let play_time = initial_time + Duration::nanoseconds((padding_ref.pts - initial_pts) as i64);
 
+            let now = Utc::now();
+            println!("play_time {:?} {:?}", now.signed_duration_since(source_timestamp).num_milliseconds(), now.signed_duration_since(play_time).num_milliseconds());
             let sender = sender.send(
                 (
                     None,
@@ -110,13 +111,12 @@ fn main() {
             ).wait().unwrap();
 
             //println!("pts {:?}, {:?}", source_timestamp, play_time);
-            Ok((sender, Some(initial_time), Some(initial_ts)))
+            Ok((sender, Some(initial_time), Some(padding_ref.ts as u64), Some(ts_diff_sum), Some(initial_pts)))
         });
         let _ = core.run(r);
     }).join();
 
     let _ = th_key.join();
-    let _ = th_gst.join();
     let _ = th_rtp_1.join();
     let _ = th_rtp_2.join();
     let _ = th_hapt_1.join();
@@ -127,6 +127,6 @@ fn main() {
 #[derive(Debug)]
 struct CPacket
 {
-    ts: u32,
+    ts: u64,
     pts: u64,
 }

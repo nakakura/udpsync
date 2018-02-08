@@ -32,14 +32,13 @@ pub fn set_offset(offset: i32) {
 
 fn extract_playabledata(mut data: Vec<HapticData>, &PlayTimingGap(time): &PlayTimingGap) -> (Vec<HapticData>, PlayDataAndTime) {
     let offset = (*OFFSET.read().unwrap()) as i64;
-    println!("offset {}", offset);
     //古すぎるデータは再生せず捨てる
     let _too_old_data = data.drain_filter(|ref mut x| {
         x.timestamp < time.0 - Duration::milliseconds(16) + Duration::milliseconds(offset)
     }).collect::<Vec<_>>();
 
     if _too_old_data.len() > 0 {
-        println!("{:?}\n{:?}", _too_old_data, time.0);
+        println!("too old {:?}\n{:?}", _too_old_data, time.0);
     }
 
     //再生データの取り出し

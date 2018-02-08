@@ -2,7 +2,12 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
+#ifdef WIN32
+#include <winsock2.h>
+#else
 #include <arpa/inet.h>
+#endif
+
 
 static unsigned int header_offset = (4 + 1 + 1 + 2 + 7 + 1 + 16 + 32 + 32) / sizeof(char);
 
