@@ -37,7 +37,7 @@ fn main() {
     let th_redirect1 = thread::spawn(move || {
         let mut core = Core::new().unwrap();
 
-        let r = hapt_play_rx.fold((sender, vec!(), None), check_time);
+        let r = hapt_play_rx.fold((sender, vec!(), vec!()), check_time);
         let _ = core.run(r);
     });
     let th_redirect2 = thread::spawn(move || {
@@ -89,7 +89,6 @@ fn main() {
             let data_ptr: *const u8 = x.as_ptr();
             let header_ptr: *const CPacket = data_ptr as *const _;
             let padding_ref: &CPacket = unsafe { &*header_ptr };
-            println!("{:?}", padding_ref);
             let initial_time = initial_time_opt.unwrap_or(Utc::now());
             let initial_pts = initial_pts_opt.unwrap_or(padding_ref.pts);
             let prev_ts = prev_ts_opt.unwrap_or(padding_ref.ts as u64);
@@ -102,7 +101,7 @@ fn main() {
             let play_time = initial_time + Duration::nanoseconds((padding_ref.pts - initial_pts) as i64);
 
             let now = Utc::now();
-            println!("play_time {:?} {:?}", now.signed_duration_since(source_timestamp).num_milliseconds(), now.signed_duration_since(play_time).num_milliseconds());
+            //println!("play_time {:?} {:?}", now.signed_duration_since(source_timestamp).num_milliseconds(), now.signed_duration_since(play_time).num_milliseconds());
             let sender = sender.send(
                 (
                     None,
@@ -110,7 +109,6 @@ fn main() {
                 )
             ).wait().unwrap();
 
-            //println!("pts {:?}, {:?}", source_timestamp, play_time);
             Ok((sender, Some(initial_time), Some(padding_ref.ts as u64), Some(ts_diff_sum), Some(initial_pts)))
         });
         let _ = core.run(r);
