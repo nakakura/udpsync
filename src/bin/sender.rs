@@ -21,7 +21,7 @@ fn main() {
 
     //recv and redirect data from hapt sensor
     let bind_addr_hapt: SocketAddr = format!("0.0.0.0:{}", 10001).parse().unwrap();
-    let target_addr_hapt: SocketAddr = format!("127.0.0.1:{}", 20001).parse().unwrap();
+    let target_addr_hapt: SocketAddr = format!("192.168.20.101:{}", 20001).parse().unwrap();
     let (recv_hapt_tx, recv_hapt_rx) = mpsc::channel::<Vec<u8>>(5000);
     let th_hapt_1 = udpsync::udp::receiver(bind_addr_hapt, recv_hapt_tx);
     let th_hapt_2 = udpsync::udp::sender(recv_hapt_rx.map(move |x| {

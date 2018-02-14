@@ -4,7 +4,7 @@ import time
 from contextlib import closing
 
 def main():
-  host = '127.0.0.1'
+  host = '192.168.20.101'
   port = 10001
   count = 0.0
   sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
