@@ -11,6 +11,7 @@ sockaddr = Socket.pack_sockaddr_in(ARGV[1], ARGV[0])
 
 loop do
     for num in 1..10 do
+        udp.send([1,2,3].pack('C*'), 0, sockaddr)
         udp.send(ARGV[2] + "_HELLO_" + num.to_s , 0, sockaddr)
         udp.send(ARGV[2] + "_あいうえお_" + num.to_s, 0, sockaddr)
         udp.send(ARGV[2] + "_漢字_" + num.to_s, 0, sockaddr)
