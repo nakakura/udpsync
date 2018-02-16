@@ -89,7 +89,6 @@ fn main() {
             let data_ptr: *const u8 = x.as_ptr();
             let header_ptr: *const CPacket = data_ptr as *const _;
             let padding_ref: &CPacket = unsafe { &*header_ptr };
-            println!("{:?}", padding_ref);
             let initial_time = initial_time_opt.unwrap_or(Utc::now());
             let initial_pts = initial_pts_opt.unwrap_or(padding_ref.pts);
             let prev_ts = prev_ts_opt.unwrap_or(padding_ref.ts as u64);
