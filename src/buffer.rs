@@ -43,63 +43,42 @@ pub fn set_offset(offset: i32) {
 }
 
 fn insert_data(mut data: Vec<HapticData>, mut time_vec: Vec<PlayTimingGap>, item: HapticData) -> (Vec<HapticData>, Vec<PlayTimingGap>, Option<PlayDataAndTime>) {
-    //timeが無い場合はとりあえずdataを残しとく
-    if time_vec.len() == 0 {
-        data.push(item);
-        return (data, time_vec, None);
-    }
-
     let offset_ms = (*OFFSET.read().unwrap()) as i64;
     let item_time = item.timestamp + Duration::milliseconds(offset_ms);
 
-    //古すぎるdataだと残す意味ないので捨てる
-    if item_time + Duration::milliseconds(17) < time_vec[0].timestamp() {
-        return (data, time_vec, None);
+    let (index, playable) = {
+        let index_opt = time_vec.iter().enumerate().find(|&(ref i, ref data)| {
+            data.timestamp() - Duration::milliseconds(16) < item_time
+                && item_time < data.timestamp()
+        });
+        if let Some(index) = index_opt {
+            (index.0, Some(PlayDataAndTime((vec!(item.buf), index.1.play_time()))))
+        }
+        else {
+            data.push(item);
+            (0, None)
+        }
+    };
+
+    if index > 50 {
+        (data, time_vec.split_off(25), playable)
     }
-
-    //古すぎるデータは再生せず捨てる
-    let _too_old_time = time_vec.drain_filter(|ref mut x| {
-        item_time > x.timestamp()
-    }).collect::<Vec<_>>();
-
-    if time_vec.len() > 0 {
-        let play_time = time_vec[0].play_time();
-        (data, time_vec, Some(PlayDataAndTime((vec!(item.buf), play_time))))
-    } else {
-        data.push(item);
-        (data, time_vec, None)
+    else {
+        (data, time_vec, playable)
     }
 }
 
-fn insert_time(mut data: Vec<HapticData>, mut time_vec: Vec<PlayTimingGap>, PlayTimingGap(time): PlayTimingGap) -> (Vec<HapticData>, Vec<PlayTimingGap>, Option<PlayDataAndTime>) {
-    //dataが無い場合はとりあえずtimeを残しとく
-    if data.len() == 0 {
-        time_vec.push(PlayTimingGap(time));
-        return (data, time_vec, None);
-    }
-
+fn insert_time(mut data: Vec<HapticData>, mut time_vec: Vec<PlayTimingGap>, time: PlayTimingGap) -> (Vec<HapticData>, Vec<PlayTimingGap>, Option<PlayDataAndTime>) {
+    time_vec.push(time.clone());
     let offset_ms = (*OFFSET.read().unwrap()) as i64;
-    let base_time = time.0 - Duration::milliseconds(offset_ms);
+    let base_time = time.timestamp() - Duration::milliseconds(offset_ms);
 
-    //古すぎるTimeだと残す意味ないので捨てる
-    if data[0].timestamp > base_time {
-        return (data, time_vec, None);
-    }
+    let send_items: Vec<Vec<u8>> = data.drain_filter(|ref mut x| {
+        base_time - Duration::milliseconds(16) < x.timestamp && x.timestamp <= base_time
+    }).map(|i| i.buf).collect();
 
-    //古すぎるデータは再生せず捨てる
-    let _too_old_data = data.drain_filter(|ref mut x| {
-        x.timestamp < base_time - Duration::milliseconds(17)
-    }).collect::<Vec<_>>();
-
-    //再生データの取り出し
-    let playable_data = data.drain_filter(|ref mut x| {
-        x.timestamp <= base_time
-    }).map(|x| x.buf).collect::<Vec<_>>();
-
-    time_vec.push(PlayTimingGap(time));
-
-    if playable_data.len() > 0 {
-        (data, time_vec, Some(PlayDataAndTime((playable_data, time.1))))
+    if send_items.len() > 0 {
+        (data, time_vec, Some(PlayDataAndTime((send_items, time.play_time()))))
     } else {
         (data, time_vec, None)
     }
@@ -158,6 +137,7 @@ fn test_insert_data_first_data() {
     assert_eq!(playable, None);
 }
 
+/*
 #[test]
 fn test_insert_data_too_old() {
     let timestamp0 = Utc.timestamp(50, 0);
@@ -174,22 +154,23 @@ fn test_insert_data_too_old() {
     assert_eq!(time, vec!(PlayTimingGap((timestamp0, play_time0)), PlayTimingGap((timestamp1, play_time1))));
     assert_eq!(playable, None);
 }
+*/
 
 #[test]
 fn test_insert_data_playable() {
     let timestamp0 = Utc.timestamp(0, 50 * 1000 * 1000);
     let play_time0 = Utc.timestamp(0, 1 * 1000 * 1000);
     let timestamp1 = Utc.timestamp(0, 66 * 1000 * 1000);
-    let play_time1 = Utc.timestamp(0, 1 * 1000 * 1000);
+    let play_time1 = Utc.timestamp(0, 10 * 1000 * 1000);
 
     let data0 = vec!(0u8, 10u8);
-    let time0 = Utc.timestamp(0, 40 * 1000 * 1000);
+    let time0 = Utc.timestamp(0, 55 * 1000 * 1000);
     let acc0 = HapticData::new(data0.clone(), time0);
 
     let (data, time, playable) = insert_data(vec!(), vec!(PlayTimingGap((timestamp0, play_time0)), PlayTimingGap((timestamp1, play_time1))), acc0.clone());
     assert_eq!(data, vec!());
     assert_eq!(time, vec!(PlayTimingGap((timestamp0, play_time0)), PlayTimingGap((timestamp1, play_time1))));
-    let playable_data = PlayDataAndTime((vec!(acc0.buf), play_time0));
+    let playable_data = PlayDataAndTime((vec!(acc0.buf), play_time1));
     assert_eq!(playable, Some(playable_data));
 }
 
@@ -206,8 +187,59 @@ fn test_insert_data_too_new() {
 
     let (data, time, playable) = insert_data(vec!(), vec!(PlayTimingGap((timestamp0, play_time0)), PlayTimingGap((timestamp1, play_time1))), acc0.clone());
     assert_eq!(data, vec!(acc0));
-    assert_eq!(time, vec!());
+    assert_eq!(time, vec!(PlayTimingGap((timestamp0, play_time0)), PlayTimingGap((timestamp1, play_time1))));
     assert_eq!(playable, None);
+}
+
+#[test]
+fn test_insert_data_and_remove_too_old_time() {
+    let timestamp0 = Utc.timestamp(1, 50 * 1000 * 1000);
+    let play_time0 = Utc.timestamp(1, 1 * 1000 * 1000);
+    let timestamp1 = Utc.timestamp(1, 66 * 1000 * 1000);
+    let play_time1 = Utc.timestamp(1, 10 * 1000 * 1000);
+
+    let data0 = vec!(0u8, 10u8);
+    let time0 = Utc.timestamp(1, 55 * 1000 * 1000);
+    let acc0 = HapticData::new(data0.clone(), time0);
+
+    let timestamp_too_old = Utc.timestamp(0, 50 * 1000 * 1000);
+    let play_time_too_old = Utc.timestamp(0, 1 * 1000 * 1000);
+    let mut ts = vec!(PlayTimingGap((timestamp_too_old, play_time_too_old)));
+    for i in 0..100 {
+        ts.push(PlayTimingGap((timestamp_too_old, play_time_too_old)));
+    }
+    ts.push(PlayTimingGap((timestamp0, play_time0)));
+    ts.push(PlayTimingGap((timestamp1, play_time1)));
+
+    let mut ts2 = vec!(PlayTimingGap((timestamp_too_old, play_time_too_old)));
+    for i in 0..75 {
+        ts2.push(PlayTimingGap((timestamp_too_old, play_time_too_old)));
+    }
+    ts2.push(PlayTimingGap((timestamp0, play_time0)));
+    ts2.push(PlayTimingGap((timestamp1, play_time1)));
+
+    let (data, time, playable) = insert_data(vec!(), ts.clone(), acc0.clone());
+    assert_eq!(data, vec!());
+    assert_eq!(time, ts2);
+    let playable_data = PlayDataAndTime((vec!(acc0.buf), play_time1));
+    assert_eq!(playable, Some(playable_data));
+
+    /*
+
+    let timestamp0 = Utc.timestamp(1, 50 * 1000 * 1000);
+    let play_time0 = Utc.timestamp(0, 1 * 1000 * 1000);
+    let timestamp1 = Utc.timestamp(1, 66 * 1000 * 1000);
+    let play_time1 = Utc.timestamp(0, 1 * 1000 * 1000);
+
+    let data0 = vec!(0u8, 10u8);
+    let time0 = Utc.timestamp(1, 51);
+    let acc0 = HapticData::new(data0.clone(), time0);
+
+   let (data, time, playable) = insert_data(vec!(), ts.clone(), acc0.clone());
+    assert_eq!(data, vec!(acc0));
+    assert_eq!(time.len(), ts.len());
+    assert_eq!(playable, None);
+    */
 }
 
 #[test]
@@ -229,8 +261,9 @@ fn test_insert_time_first_time() {
     assert_eq!(playable, None);
 }
 
+/*
 #[test]
-fn test_insert_time_too_old(){
+fn test_insert_time_too_old(){ //removeしない実装に一時的にした
     //0ms経過時のデータ
     let data0 = vec!(0u8, 10u8);
     let time0 = Utc.timestamp(1, 0);
@@ -249,6 +282,7 @@ fn test_insert_time_too_old(){
     assert_eq!(time, vec!());
     assert_eq!(playable, None);
 }
+*/
 
 #[test]
 fn test_insert_time_playable(){
@@ -287,7 +321,17 @@ fn test_insert_time_too_new(){
 
     let (data, time, playable) = insert_time(vec!(acc0.clone(), acc1.clone()), vec!(), PlayTimingGap((timestamp0, play_time0)));
 
-    assert_eq!(data, vec!());
+    assert_eq!(data, vec!(acc0, acc1));
     assert_eq!(time, vec!(PlayTimingGap((timestamp0, play_time0))));
     assert_eq!(playable, None);
+}
+
+#[test]
+fn test_iter() {
+    let foo = vec![1, 35, 64, 36, 26];
+    foo.iter().enumerate().filter(|&(i, v)| {
+        v % 2 == 0
+    }).for_each(|i| {
+        eprintln!("{:?}", i)
+    });
 }
