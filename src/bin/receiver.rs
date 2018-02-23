@@ -60,7 +60,7 @@ fn main() {
 
     //recv rtp from sender and redirect it to gstreamer
     let bind_addr_rtp: SocketAddr = format!("0.0.0.0:{}", 20000).parse().unwrap();
-    let target_addr_rtp: SocketAddr = format!("127.0.0.1:{}", 30000).parse().unwrap();
+    let target_addr_rtp: SocketAddr = format!("127.0.0.1:{}", 7100).parse().unwrap();
     let (recv_rtp_tx, recv_rtp_rx) = mpsc::channel::<Vec<u8>>(5000);
     let th_rtp_1 = udpsync::udp::receiver(bind_addr_rtp, recv_rtp_tx);
     let th_rtp_2 = udpsync::udp::sender(recv_rtp_rx.map(move |x| (target_addr_rtp, x)));
