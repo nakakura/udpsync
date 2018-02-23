@@ -46,39 +46,62 @@ fn insert_data(mut data: Vec<HapticData>, mut time_vec: Vec<PlayTimingGap>, item
     let offset_ms = (*OFFSET.read().unwrap()) as i64;
     let item_time = item.timestamp + Duration::milliseconds(offset_ms);
 
-    let (index, playable) = {
-        let index_opt = time_vec.iter().enumerate().find(|&(ref i, ref data)| {
-            data.timestamp() - Duration::milliseconds(16) < item_time
-                && item_time < data.timestamp()
+    if time_vec.len() == 0 {
+        //1つもtimestampがなければためとく
+        data.push(item);
+        return (data, time_vec, None);
+    }
+
+    let first = time_vec[0].clone();
+    if item.timestamp < first.timestamp() - Duration::milliseconds(16) {
+        //最初のtimestampより小さくて、極端に小さい場合は捨てる
+        return (data, time_vec, None);
+    } else if item.timestamp < first.timestamp() {
+        //最初のtimestampより小さくて、極端に小さくない場合は
+        //最初のtimestampから計算した時間に送信
+        let message = format!("case 1");
+        let playtime = first.play_time() - (first.timestamp().signed_duration_since(item.timestamp));
+        return (data, time_vec, Some(PlayDataAndTime((vec!(message.into_bytes()), playtime))));
+    }
+
+    //該当データよりも大きなtimestampを探す
+    let index_opt = {
+        let found_opt = time_vec.iter().enumerate().find(|&(ref i, ref data)| {
+            item_time < data.timestamp()
         });
-        if let Some(index) = index_opt {
-            let message = format!("index {}", index.0);
-            (index.0, Some(PlayDataAndTime((vec!(message.into_bytes()), index.1.play_time()))))
-        }
-        else {
-            if time_vec.len() > 0 {
-                let last_time = &time_vec[time_vec.len() - 1];
-                let duration = item_time.signed_duration_since(last_time.timestamp());
-                if duration < Duration::milliseconds(16 * 3) {
-                    let message = format!("from old packet duration {:?}", duration.num_milliseconds());
-                    (time_vec.len() - 1, Some(PlayDataAndTime((vec!(message.into_bytes()), last_time.play_time() + duration))))
-                } else {
-                    data.push(item);
-                    (0, None)
-                }
-            } else {
-                data.push(item);
-                (0, None)
-            }
+
+        if let Some(found) = found_opt {
+            Some((found.0, found.1.clone()))
+        } else {
+            None
         }
     };
+    if let Some(found_item) = index_opt {
+        //該当データよりも大きなtimestampがあった場合
+        //そのデータから計算した時刻に送信
+        let message = format!("case 2 index {}", found_item.0);
+        let playtime = found_item.1.play_time() - found_item.1.timestamp().signed_duration_since(item.timestamp);
+        if found_item.0 > 50 {
+            //time_vecが長すぎる場合は減らす
+            return (data, time_vec.split_off(25), Some(PlayDataAndTime((vec!(message.into_bytes()), playtime))));
+        } else {
+            return (data, time_vec, Some(PlayDataAndTime((vec!(message.into_bytes()), playtime))));
+        }
+    } else {
+        let last_item = time_vec[time_vec.len()].clone();
+        if item.timestamp > last_item.timestamp() + Duration::milliseconds(16 * 3) {
+            //該当データよりも大きなtimestampがなかったけど、
+            //最後のやつからそんなに離れてない場合はそこから計算して送る
+            let message = format!("case 3 index {}", time_vec.len() - 1);
+            let playtime = last_item.play_time() - last_item.timestamp().signed_duration_since(item.timestamp);
+            return (data, time_vec, Some(PlayDataAndTime((vec!(message.into_bytes()), playtime))));
+        }
+    }
 
-    if index > 50 {
-        (data, time_vec.split_off(25), playable)
-    }
-    else {
-        (data, time_vec, playable)
-    }
+    //ここに来る場合、新しすぎるデータ
+    //とりあえずためておく
+    data.push(item);
+    return (data, time_vec, None);
 }
 
 fn insert_time(mut data: Vec<HapticData>, mut time_vec: Vec<PlayTimingGap>, time: PlayTimingGap) -> (Vec<HapticData>, Vec<PlayTimingGap>, Option<PlayDataAndTime>) {
@@ -88,7 +111,7 @@ fn insert_time(mut data: Vec<HapticData>, mut time_vec: Vec<PlayTimingGap>, time
 
     let send_items: Vec<Vec<u8>> = data.drain_filter(|ref mut x| {
         base_time - Duration::milliseconds(16) < x.timestamp && x.timestamp <= base_time
-    }).map(|i| {
+    }).map(|_i| {
         let message = format!("from insert_time");
         message.into_bytes()
     }).collect();
