@@ -88,7 +88,10 @@ fn insert_time(mut data: Vec<HapticData>, mut time_vec: Vec<PlayTimingGap>, time
 
     let send_items: Vec<Vec<u8>> = data.drain_filter(|ref mut x| {
         base_time - Duration::milliseconds(16) < x.timestamp && x.timestamp <= base_time
-    }).map(|i| i.buf).collect();
+    }).map(|i| {
+        let message = format!("from insert_time");
+        message.into_bytes()
+    }).collect();
 
     if send_items.len() > 0 {
         (data, time_vec, Some(PlayDataAndTime((send_items, time.play_time()))))
