@@ -52,14 +52,16 @@ fn insert_data(mut data: Vec<HapticData>, mut time_vec: Vec<PlayTimingGap>, item
                 && item_time < data.timestamp()
         });
         if let Some(index) = index_opt {
-            (index.0, Some(PlayDataAndTime((vec!(item.buf), index.1.play_time()))))
+            let message = format!("index {}", index.0);
+            (index.0, Some(PlayDataAndTime((vec!(message.into_bytes()), index.1.play_time()))))
         }
         else {
             if time_vec.len() > 0 {
                 let last_time = &time_vec[time_vec.len() - 1];
                 let duration = item_time.signed_duration_since(last_time.timestamp());
                 if duration < Duration::milliseconds(16 * 3) {
-                    (time_vec.len() - 1, Some(PlayDataAndTime((vec!(item.buf), last_time.play_time() + duration))))
+                    let message = format!("from old packet duration {:?}", duration.num_milliseconds());
+                    (time_vec.len() - 1, Some(PlayDataAndTime((vec!(message.into_bytes()), last_time.play_time() + duration))))
                 } else {
                     data.push(item);
                     (0, None)
