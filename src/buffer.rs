@@ -55,8 +55,19 @@ fn insert_data(mut data: Vec<HapticData>, mut time_vec: Vec<PlayTimingGap>, item
             (index.0, Some(PlayDataAndTime((vec!(item.buf), index.1.play_time()))))
         }
         else {
-            data.push(item);
-            (0, None)
+            if time_vec.len() > 0 {
+                let last_time = &time_vec[time_vec.len() - 1];
+                let duration = item_time.signed_duration_since(last_time.timestamp());
+                if duration < Duration::milliseconds(16 * 3) {
+                    (time_vec.len() - 1, Some(PlayDataAndTime((vec!(item.buf), last_time.play_time() + duration))))
+                } else {
+                    data.push(item);
+                    (0, None)
+                }
+            } else {
+                data.push(item);
+                (0, None)
+            }
         }
     };
 
@@ -171,6 +182,24 @@ fn test_insert_data_playable() {
     assert_eq!(data, vec!());
     assert_eq!(time, vec!(PlayTimingGap((timestamp0, play_time0)), PlayTimingGap((timestamp1, play_time1))));
     let playable_data = PlayDataAndTime((vec!(acc0.buf), play_time1));
+    assert_eq!(playable, Some(playable_data));
+}
+
+#[test]
+fn test_insert_a_little_bit_new_data_playable() {
+    let timestamp0 = Utc.timestamp(0, 50 * 1000 * 1000);
+    let play_time0 = Utc.timestamp(0, 1 * 1000 * 1000);
+    let timestamp1 = Utc.timestamp(0, 66 * 1000 * 1000);
+    let play_time1 = Utc.timestamp(0, 10 * 1000 * 1000);
+
+    let data0 = vec!(0u8, 10u8);
+    let time0 = Utc.timestamp(0, 70 * 1000 * 1000);
+    let acc0 = HapticData::new(data0.clone(), time0);
+
+    let (data, time, playable) = insert_data(vec!(), vec!(PlayTimingGap((timestamp0, play_time0)), PlayTimingGap((timestamp1, play_time1))), acc0.clone());
+    assert_eq!(data, vec!());
+    assert_eq!(time, vec!(PlayTimingGap((timestamp0, play_time0)), PlayTimingGap((timestamp1, play_time1))));
+    let playable_data = PlayDataAndTime((vec!(acc0.buf), play_time1 + time0.signed_duration_since(timestamp1)));
     assert_eq!(playable, Some(playable_data));
 }
 
