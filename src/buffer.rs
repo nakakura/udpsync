@@ -78,21 +78,40 @@ fn insert_data(mut data: Vec<HapticData>, mut time_vec: Vec<PlayTimingGap>, item
     };
     if let Some(found_item) = index_opt {
         //該当データよりも大きなtimestampがあった場合
-        //そのデータから計算した時刻に送信
-        let message = format!("case 2 index {}", found_item.0);
-        let playtime = found_item.1.play_time() - found_item.1.timestamp().signed_duration_since(item.timestamp);
-        if found_item.0 > 50 {
-            //time_vecが長すぎる場合は減らす
-            return (data, time_vec.split_off(25), Some(PlayDataAndTime((vec!(message.into_bytes()), playtime))));
+        //前後のデータから計算した時刻に送信
+        if found_item.0 > 0 {
+            let before = time_vec[found_item.0 - 1].clone();
+            let next = time_vec[found_item.0].clone();
+            let (index, closest_item) = if (item.timestamp.signed_duration_since(before.timestamp()) < next.timestamp().signed_duration_since(item.timestamp)) {
+                (found_item.0-1, before)
+            } else {
+                (found_item.0, next)
+            };
+
+            let message = format!("case 2 index {}", index);
+            let playtime = closest_item.play_time() - closest_item.timestamp().signed_duration_since(item.timestamp);
+            if found_item.0 > 50 {
+                //time_vecが長すぎる場合は減らす
+                return (data, time_vec.split_off(25), Some(PlayDataAndTime((vec!(message.into_bytes()), playtime))));
+            } else {
+                return (data, time_vec, Some(PlayDataAndTime((vec!(message.into_bytes()), playtime))));
+            }
         } else {
-            return (data, time_vec, Some(PlayDataAndTime((vec!(message.into_bytes()), playtime))));
+            let message = format!("case 3 index {}", found_item.0);
+            let playtime = found_item.1.play_time() - found_item.1.timestamp().signed_duration_since(item.timestamp);
+            if found_item.0 > 50 {
+                //time_vecが長すぎる場合は減らす
+                return (data, time_vec.split_off(25), Some(PlayDataAndTime((vec!(message.into_bytes()), playtime))));
+            } else {
+                return (data, time_vec, Some(PlayDataAndTime((vec!(message.into_bytes()), playtime))));
+            }
         }
     } else {
         let last_item = time_vec[time_vec.len()].clone();
         if item.timestamp > last_item.timestamp() + Duration::milliseconds(16 * 3) {
             //該当データよりも大きなtimestampがなかったけど、
             //最後のやつからそんなに離れてない場合はそこから計算して送る
-            let message = format!("case 3 index {}", time_vec.len() - 1);
+            let message = format!("case 4 index {}", time_vec.len() - 1);
             let playtime = last_item.play_time() - last_item.timestamp().signed_duration_since(item.timestamp);
             return (data, time_vec, Some(PlayDataAndTime((vec!(message.into_bytes()), playtime))));
         }
