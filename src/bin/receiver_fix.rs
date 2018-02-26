@@ -51,25 +51,26 @@ fn main() {
         (Some(data), None)
     }));
 
-    let (redirect_hapt_tx, redirect_hapt_rx) = mpsc::channel::<PlayDataAndTime>(5000);
+    let (sync_hapt_tx, sync_hapt_rx) = mpsc::channel::<PlayDataAndTime>(5000);
 
     let sync_hapt_th = thread::spawn(move || {
         let mut core = Core::new().unwrap();
-        let r = hapt_src_rx.fold((redirect_hapt_tx, vec!(), vec!()), check_time);
+        let r = hapt_src_rx.fold((sync_hapt_tx, vec!(), vec!()), check_time);
         let _ = core.run(r);
     });
 
-    let (tx, rx) = mpsc::channel::<Vec<u8>>(5000);
-    let tx = tx.with_flat_map(|values: Vec<Vec<u8>>| {
+    let (redirect_hapt_tx, redirect_hapt_rx) = mpsc::channel::<Vec<u8>>(5000);
+    let redirect_hapt_tx = redirect_hapt_tx.with_flat_map(|values: Vec<Vec<u8>>| {
         stream::iter_ok(values.into_iter().map(move |value| {
             value
         }))
     });
 
+    let (send_hapt_tx, send_hapt_rx) = mpsc::channel::<Vec<u8>>(5000);
     let redirect_hapt_th = thread::spawn(move || {
         let mut core = Core::new().unwrap();
 
-        let r = redirect_hapt_rx.fold(tx, |sender, PlayDataAndTime((vec, time))| {
+        let r = sync_hapt_rx.fold(redirect_hapt_tx, |sender, PlayDataAndTime((vec, time))| {
             while time > Utc::now() {
                 thread::sleep_ms(1);
             }
@@ -79,7 +80,7 @@ fn main() {
         let _ = core.run(r);
     });
     let target: SocketAddr = format!("127.0.0.1:{}", 30001).parse().unwrap();
-    let th_redirect = udpsync::udp::sender(rx.map(move |x| {
+    let th_redirect = udpsync::udp::sender(redirect_hapt_rx.map(move |x| {
         (target, x)
     }));
 
