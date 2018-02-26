@@ -23,4 +23,4 @@ path = "src/bin/sender.rs"
 
 [[bin]]
 name = "receiver"
-path = "src/bin/receiver_fix.rs"
+path = "src/bin/receiver_old.rs"

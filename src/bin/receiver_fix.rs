@@ -131,11 +131,11 @@ fn recv_pts_pair(output: mpsc::Sender<(Option<HapticData>, Option<PlayTimingGap>
             let header_ptr: *const CPacket = data_ptr as *const _;
             let padding_ref: &CPacket = unsafe { &*header_ptr };
 
-            let current_rtp_time_gap: u64 = total_rtp_time_gap_opt.unwrap_or(0);
+            let current_rtp_time_gap: i64 = total_rtp_time_gap_opt.unwrap_or(0);
             let prev_ts = prev_ts_opt.unwrap_or(first_timestamp());
             let ts_diff: u64 = (padding_ref.ts as u64 + std::u32::MAX as u64 - prev_ts) % std::u32::MAX as u64;
             let rtp_time_diff = udpsync::gstreamer_mock::ts_to_time(ts_diff) as i64;
-            let total_rtp_time_gap = current_rtp_time_gap as i64 + rtp_time_diff;
+            let total_rtp_time_gap = current_rtp_time_gap + rtp_time_diff;
             let source_position = Utc.timestamp(0, 0) + Duration::milliseconds(total_rtp_time_gap);
 
             let initial_time = initial_time_opt.unwrap_or(Utc::now());

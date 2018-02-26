@@ -24,12 +24,16 @@ use udpsync::buffer::*;
 use std::sync::RwLock;
 
 lazy_static! {
-    pub static ref FIRST_TIMESTAMP: RwLock<Option<u64>> = {
-        RwLock::new(None)
+    pub static ref FIRST_TIMESTAMP: RwLock<u64> = {
+        RwLock::new(0)
     };
 }
 
-pub fn set_timestamp(ts: u64) {
+fn first_timestamp() -> u64 {
+    *FIRST_TIMESTAMP.read().unwrap()
+}
+
+fn set_first_timestamp(ts: u64) {
     *FIRST_TIMESTAMP.write().unwrap() = ts;
 }
 
@@ -76,7 +80,15 @@ fn main() {
     let target_addr_rtp: SocketAddr = format!("127.0.0.1:{}", 7100).parse().unwrap();
     let (recv_rtp_tx, recv_rtp_rx) = mpsc::channel::<Vec<u8>>(5000);
     let th_rtp_1 = udpsync::udp::receiver(bind_addr_rtp, recv_rtp_tx);
-    let th_rtp_2 = udpsync::udp::sender(recv_rtp_rx.map(move |x| (target_addr_rtp, x)));
+    let th_rtp_2 = udpsync::udp::sender(recv_rtp_rx.map(move |x|{
+        if first_timestamp() == 0 {
+            let ts = unsafe {
+                udpsync::rtp::timestamp(x.as_ptr()) as u64
+            };
+            set_first_timestamp(ts);
+        }
+        (target_addr_rtp, x)
+    }));
 
     //recv hapt data from sender and redirect it to haptic player through ring buffer
     let bind_addr_hapt: SocketAddr = format!("0.0.0.0:{}", 20001).parse().unwrap();
@@ -107,7 +119,7 @@ fn main() {
             let padding_ref: &CPacket = unsafe { &*header_ptr };
             let initial_time = initial_time_opt.unwrap_or(Utc::now());
             let initial_pts = initial_pts_opt.unwrap_or(padding_ref.pts);
-            let prev_ts = prev_ts_opt.unwrap_or(padding_ref.ts as u64);
+            let prev_ts = prev_ts_opt.unwrap_or(first_timestamp());
             let ts_diff_sum: u64 = ts_diff_sum_opt.unwrap_or(0);
 
             let ts_diff: u64 = (padding_ref.ts as u64 + std::u32::MAX as u64 - prev_ts) % std::u32::MAX as u64;
