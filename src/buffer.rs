@@ -106,15 +106,19 @@ fn insert_time(mut data: Vec<HapticData>, mut time_vec: Vec<PlayTimingGap>, time
     let offset_ms = (*OFFSET.read().unwrap()) as i64;
     let base_time = time.timestamp() - Duration::milliseconds(offset_ms);
 
+    let mut playtime = time.play_time();
+
     let send_items: Vec<Vec<u8>> = data.drain_filter(|ref mut x| {
         base_time - Duration::milliseconds(16) < x.timestamp && x.timestamp <= base_time
-    }).map(|_i| {
+    }).map(|i| {
         let message = format!("from insert_time");
+        playtime = time.play_time() + i.timestamp.signed_duration_since(time.timestamp());
         message.into_bytes()
     }).collect();
 
     if send_items.len() > 0 {
-        (data, time_vec, Some(PlayDataAndTime((send_items, time.play_time()))))
+        let s = send_items[0].clone();
+        (data, time_vec, Some(PlayDataAndTime((send_items, playtime))))
     } else {
         (data, time_vec, None)
     }
