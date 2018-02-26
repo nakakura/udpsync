@@ -67,8 +67,8 @@ fn insert_data(mut data: Vec<HapticData>, mut time_vec: Vec<PlayTimingGap>, item
         return (data, time_vec, None);
     } else if flag == 2 {
         let comp = time_vec[time_vec.len() - 1].clone();
-        if item.timestamp.signed_duration_since(comp.timestamp()) < Duration::milliseconds(32) {
-            let playtime = comp.play_time() + item.timestamp.signed_duration_since(comp.timestamp());
+        if item_time.signed_duration_since(comp.timestamp()) < Duration::milliseconds(32) {
+            let playtime = comp.play_time() + item_time.signed_duration_since(comp.timestamp());
             let message = format!("bigger than all data");
             return (data, time_vec, Some(PlayDataAndTime((vec!(message.into_bytes()), playtime))))
         } else {
@@ -79,18 +79,18 @@ fn insert_data(mut data: Vec<HapticData>, mut time_vec: Vec<PlayTimingGap>, item
         if let Some(index) = index_opt {
             if index == 0 {
                 let comp = time_vec[index].clone();
-                let playtime = comp.play_time() + item.timestamp.signed_duration_since(comp.timestamp());
+                let playtime = comp.play_time() + item_time.signed_duration_since(comp.timestamp());
                 let message = format!("smaller than all data");
                 return (data, time_vec, Some(PlayDataAndTime((vec!(message.into_bytes()), playtime))))
             } else {
                 let comp1 = time_vec[index - 1].clone();
                 let comp2 = time_vec[index].clone();
-                if item.timestamp.signed_duration_since(comp1.timestamp()) < comp2.timestamp().signed_duration_since(item.timestamp) {
-                    let playtime = comp1.play_time() + item.timestamp.signed_duration_since(comp1.timestamp());
+                if item_time.signed_duration_since(comp1.timestamp()) < comp2.timestamp().signed_duration_since(item_time) {
+                    let playtime = comp1.play_time() + item_time.signed_duration_since(comp1.timestamp());
                     let message = format!("adjust from smaller one {}", index-1);
                     return (data, time_vec, Some(PlayDataAndTime((vec!(message.into_bytes()), playtime))))
                 } else {
-                    let playtime = comp2.play_time() + item.timestamp.signed_duration_since(comp2.timestamp());
+                    let playtime = comp2.play_time() + item_time.signed_duration_since(comp2.timestamp());
                     let message = format!("adjust from bigger one {}", index);
                     return (data, time_vec, Some(PlayDataAndTime((vec!(message.into_bytes()), playtime))))
                 }
@@ -112,7 +112,7 @@ fn insert_time(mut data: Vec<HapticData>, mut time_vec: Vec<PlayTimingGap>, time
         base_time - Duration::milliseconds(16) < x.timestamp && x.timestamp <= base_time
     }).map(|i| {
         let message = format!("from insert_time");
-        playtime = time.play_time() + i.timestamp.signed_duration_since(time.timestamp());
+        playtime = time.play_time() + i.timestamp.signed_duration_since(base_time);
         message.into_bytes()
     }).collect();
 
