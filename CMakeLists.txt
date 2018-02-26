@@ -4,7 +4,7 @@ project(udpsync)
 set(CMAKE_CXX_STANDARD 11)
 
 add_executable(udpsync
-        src/bin/receiver.rs
+        src/bin/receiver_old.rs
         src/bin/sender.rs
         src/buffer.rs
         src/gstreamer_mock.rs

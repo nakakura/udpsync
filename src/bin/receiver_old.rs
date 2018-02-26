@@ -5,6 +5,7 @@ extern crate tokio_io;
 extern crate tokio_core;
 
 extern crate udpsync;
+#[macro_use] extern crate lazy_static;
 
 use chrono::*;
 use futures::*;
@@ -19,6 +20,18 @@ use std::thread;
 
 use udpsync::haptic_data::HapticData;
 use udpsync::buffer::*;
+
+use std::sync::RwLock;
+
+lazy_static! {
+    pub static ref FIRST_TIMESTAMP: RwLock<Option<u64>> = {
+        RwLock::new(None)
+    };
+}
+
+pub fn set_timestamp(ts: u64) {
+    *FIRST_TIMESTAMP.write().unwrap() = ts;
+}
 
 fn main() {
     let th_key = udpsync::keyboard::get_keyboard(udpsync::buffer::set_offset);
