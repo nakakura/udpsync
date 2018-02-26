@@ -23,41 +23,6 @@ use udpsync::buffer::*;
 fn main() {
     let th_key = udpsync::keyboard::get_keyboard(udpsync::buffer::set_offset);
 
-    let (tx, rx) = mpsc::channel::<Vec<u8>>(5000);
-    let tx = tx.with_flat_map(|values: Vec<Vec<u8>>| {
-        stream::iter_ok(values.into_iter().map(move |value| {
-            value
-        }))
-    });
-
-    let (recv_ts_tx, recv_ts_rx) = mpsc::channel::<(Option<HapticData>, Option<PlayTimingGap>)>(5000);
-    let (redirect_hapt_tx, redirect_hapt_rx) = mpsc::channel::<(Option<HapticData>, Option<PlayTimingGap>)>(5000);
-    let hapt_play_rx = recv_ts_rx.select(redirect_hapt_rx);
-    let (sender, receiver) = mpsc::channel::<PlayDataAndTime>(5000);
-    let th_redirect1 = thread::spawn(move || {
-        let mut core = Core::new().unwrap();
-
-        let r = hapt_play_rx.fold((sender, vec!(), vec!()), check_time);
-        let _ = core.run(r);
-    });
-    let th_redirect2 = thread::spawn(move || {
-        let mut core = Core::new().unwrap();
-
-        let r = receiver.fold(tx, |sender, PlayDataAndTime((vec, time))| {
-            while time > Utc::now() {
-                thread::sleep_ms(1);
-            }
-            let sender = sender.send(vec).wait().unwrap();
-            Ok(sender)
-        });
-        let _ = core.run(r);
-    });
-
-    let target: SocketAddr = format!("127.0.0.1:{}", 30001).parse().unwrap();
-    let th_redirect = udpsync::udp::sender(rx.map(move |x| {
-        (target, x)
-    }));
-
     //recv rtp from sender and redirect it to gstreamer
     let bind_addr_rtp: SocketAddr = format!("0.0.0.0:{}", 20000).parse().unwrap();
     let target_addr_rtp: SocketAddr = format!("127.0.0.1:{}", 7100).parse().unwrap();
@@ -65,19 +30,38 @@ fn main() {
     let th_rtp_1 = udpsync::udp::receiver(bind_addr_rtp, recv_rtp_tx);
     let th_rtp_2 = udpsync::udp::sender(recv_rtp_rx.map(move |x| (target_addr_rtp, x)));
 
+    //prepare for haptic sender
+    let (send_hapt_tx, send_hapt_rx) = mpsc::channel::<Vec<u8>>(5000);
+    let tx = send_hapt_tx.with_flat_map(|values: Vec<Vec<u8>>| {
+        stream::iter_ok(values.into_iter().map(move |value| {
+            value
+        }))
+    });
+
+
+    let (recv_ts_tx, recv_ts_rx) = mpsc::channel::<(Option<HapticData>, Option<PlayTimingGap>)>(5000);
+    let (redirect_hapt_tx, redirect_hapt_rx) = mpsc::channel::<(Option<HapticData>, Option<PlayTimingGap>)>(5000);
+    let hapt_play_rx = recv_ts_rx.select(redirect_hapt_rx);
+
+    let target: SocketAddr = format!("127.0.0.1:{}", 30001).parse().unwrap();
+    let th_redirect = udpsync::udp::sender(send_hapt_rx.map(move |x| {
+        (target, x)
+    }));
+
+
     //recv hapt data from sender and redirect it to haptic player through ring buffer
     let bind_addr_hapt: SocketAddr = format!("0.0.0.0:{}", 20001).parse().unwrap();
     let (recv_hapt_tx, recv_hapt_rx) = mpsc::channel::<Vec<u8>>(5000);
     let th_hapt_1 = udpsync::udp::receiver(bind_addr_hapt, recv_hapt_tx);
     let th_hapt_2 = thread::spawn(|| {
         let mut core = Core::new().unwrap();
-        let r = recv_hapt_rx.fold((redirect_hapt_tx, None, None), |(sender, initial_time_opt, initial_ts_opt), x| {
-            let initial_time = initial_time_opt.unwrap_or(Utc::now());
+        let r = recv_hapt_rx.fold(redirect_hapt_tx, |sender, x| {
+            //let initial_time = initial_time_opt.unwrap_or(Utc::now());
             let mut data = HapticData::decode(&x);
-            let initial_ts = initial_ts_opt.unwrap_or(data.timestamp);
-            data.timestamp = initial_time + (data.timestamp.signed_duration_since(initial_ts));
+            //let initial_ts = initial_ts_opt.unwrap_or(data.timestamp);
+            //data.timestamp = initial_time + (data.timestamp.signed_duration_since(initial_ts));
             let sender = sender.send((Some(data), None)).wait().unwrap();
-            Ok((sender, Some(initial_time), Some(initial_ts)))
+            Ok(sender)
         });
         let _ = core.run(r);
     });
@@ -100,7 +84,7 @@ fn main() {
             let ts_diff: u64 = (padding_ref.ts as u64 + std::u32::MAX as u64 - prev_ts) % std::u32::MAX as u64;
             let ts_diff_sum = ts_diff_sum + ts_diff;
             let diff = udpsync::gstreamer_mock::ts_to_time(ts_diff_sum) as i64;
-            let source_timestamp = initial_time + Duration::milliseconds(diff);
+            let source_timestamp = Utc.timestamp(0, 0) + Duration::milliseconds(diff);
             let play_time = initial_time + Duration::nanoseconds((padding_ref.pts - initial_pts) as i64);
 
             let now = Utc::now();
@@ -116,6 +100,28 @@ fn main() {
         });
         let _ = core.run(r);
     }).join();
+
+
+    let (sender, receiver) = mpsc::channel::<PlayDataAndTime>(5000);
+    let th_redirect1 = thread::spawn(move || {
+        let mut core = Core::new().unwrap();
+
+        let r = hapt_play_rx.fold((sender, vec!(), vec!()), check_time);
+        let _ = core.run(r);
+    });
+    let th_redirect2 = thread::spawn(move || {
+        let mut core = Core::new().unwrap();
+
+        let r = receiver.fold(tx, |sender, PlayDataAndTime((vec, time))| {
+            while time > Utc::now() {
+                thread::sleep_ms(1);
+            }
+            let sender = sender.send(vec).wait().unwrap();
+            Ok(sender)
+        });
+        let _ = core.run(r);
+    });
+
 
     let _ = th_key.join();
     let _ = th_rtp_1.join();

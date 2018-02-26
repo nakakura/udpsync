@@ -11,6 +11,12 @@ use chrono::*;
 
 use std::net::SocketAddr;
 
+#[derive(Debug)]
+struct TS
+{
+    pts: u64,
+}
+
 fn main() {
     let target_addr = "192.168.20.101";
     //recv and redirect rtp from gstreamer
@@ -26,7 +32,11 @@ fn main() {
     let (recv_hapt_tx, recv_hapt_rx) = mpsc::channel::<Vec<u8>>(5000);
     let th_hapt_1 = udpsync::udp::receiver(bind_addr_hapt, recv_hapt_tx);
     let th_hapt_2 = udpsync::udp::sender(recv_hapt_rx.map(move |x| {
-        let data = udpsync::haptic_data::HapticData::new(x, Utc::now());
+        let data_ptr: *const u8 = x.as_ptr();
+        let header_ptr: *const TS = data_ptr as *const _;
+        let padding_ref: &TS = unsafe { &*header_ptr };
+        let duration = Duration::nanoseconds(padding_ref.pts as i64);
+        let data = udpsync::haptic_data::HapticData::new(x, Utc.timestamp(0, 0) + duration);
         let bin = data.encode().unwrap();
         (target_addr_hapt, bin)
     }));
