@@ -71,13 +71,13 @@ fn main() {
     let th_hapt_1 = udpsync::udp::receiver(bind_addr_hapt, recv_hapt_tx);
     let th_hapt_2 = thread::spawn(|| {
         let mut core = Core::new().unwrap();
-        let r = recv_hapt_rx.fold((redirect_hapt_tx, None, None), |(sender, initial_time_opt, initial_ts_opt), x| {
-            let initial_time = initial_time_opt.unwrap_or(Utc::now());
+        let r = recv_hapt_rx.fold(redirect_hapt_tx, |sender, x| {
+            //let initial_time = initial_time_opt.unwrap_or(Utc::now());
             let mut data = HapticData::decode(&x);
-            let initial_ts = initial_ts_opt.unwrap_or(data.timestamp);
-            data.timestamp = initial_time + (data.timestamp.signed_duration_since(initial_ts));
+            //let initial_ts = initial_ts_opt.unwrap_or(data.timestamp);
+            //data.timestamp = initial_time + (data.timestamp.signed_duration_since(initial_ts));
             let sender = sender.send((Some(data), None)).wait().unwrap();
-            Ok((sender, Some(initial_time), Some(initial_ts)))
+            Ok(sender)
         });
         let _ = core.run(r);
     });
