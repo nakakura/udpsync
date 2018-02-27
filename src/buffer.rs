@@ -67,7 +67,7 @@ fn insert_data(mut data: Vec<HapticData>, mut time_vec: Vec<PlayTimingGap>, item
         return (data, time_vec, None);
     } else if flag == 2 {
         let comp = time_vec[time_vec.len() - 1].clone();
-        if item_time.signed_duration_since(comp.timestamp()) < Duration::milliseconds(32) {
+        if item_time.signed_duration_since(comp.timestamp()) > Duration::milliseconds(0) && item_time.signed_duration_since(comp.timestamp()) < Duration::milliseconds(32) {
             let playtime = comp.play_time() + item_time.signed_duration_since(comp.timestamp());
             let message = format!("bigger than all data");
             return (data, time_vec, Some(PlayDataAndTime((vec!(message.into_bytes()), playtime))))
