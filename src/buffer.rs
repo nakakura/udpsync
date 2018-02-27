@@ -61,7 +61,7 @@ fn find(time_vec: &Vec<PlayTimingGap>, time: DateTime<Utc>) -> (usize, Option<us
 fn insert_data(mut data: Vec<HapticData>, mut time_vec: Vec<PlayTimingGap>, item: HapticData) -> (Vec<HapticData>, Vec<PlayTimingGap>, Option<PlayDataAndTime>) {
     let offset_ms = (*OFFSET.read().unwrap()) as i64;
     let item_time = item.timestamp + Duration::milliseconds(offset_ms);
-    let (flag, index_opt) = find(&time_vec, item.timestamp);
+    let (flag, index_opt) = find(&time_vec, item_time);
     if flag == 0 {
         data.push(item);
         return (data, time_vec, None);
@@ -88,7 +88,7 @@ fn insert_data(mut data: Vec<HapticData>, mut time_vec: Vec<PlayTimingGap>, item
                 if item_time.signed_duration_since(comp1.timestamp()) < comp2.timestamp().signed_duration_since(item_time) {
                     let playtime = comp1.play_time() + item_time.signed_duration_since(comp1.timestamp());
                     let message = format!("adjust from smaller one {}", index-1);
-                    return (data, time_vec, Some(PlayDataAndTime((vec!(message.into_bytes()), playtime))))
+                    return (data, time_vec.split_off(index/2), Some(PlayDataAndTime((vec!(message.into_bytes()), playtime))))
                 } else {
                     let playtime = comp2.play_time() + item_time.signed_duration_since(comp2.timestamp());
                     let message = format!("adjust from bigger one {}", index);
